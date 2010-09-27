@@ -1,0 +1,351 @@
+#!/usr/bin/php -q
+<?php
+/* mctop v.0.5.3 (http://code.google.com/p/mctop)
+   Written by kak.serpom.po.yaitsam@gmail.com
+   Project is under LGPL (Lesser GNU Public License).
+*/
+$ver = '0.5.3';
+$servers = array('127.0.0.1:11211');
+$configpath = array(dirname(__FILE__).'/mctop.conf','/etc/mctop.conf');
+$format = 'server,capacity,usage,hit,conn,uptime,rps,wps,evict';
+$refresh = 1;
+$enable_color = 1;
+$loadedcfg = array();
+$term = new Terminal;
+foreach ($configpath as $path)
+{
+ if (!file_exists($path)) {continue;}
+ $conf = parse_ini_file($path,TRUE);
+ if (!isset($conf['mctop']))
+ {
+  echo 'Config ('.$path.") error: 'mctop' section not found. Press ENTER to continue.\n";
+  $term->readln();
+  continue;
+ }
+ foreach ($conf['mctop'] as $k => $v)
+ {
+  if ($k == 'format') {$format = $v;}
+  elseif ($k == 'refresh') {$refresh = $v;}
+  elseif ($k == 'servers') {$servers = $v;}
+  elseif ($k == 'usecolor' or $k == 'enable_color') {$enable_color = $v;}
+  else
+  {
+   echo 'Config ('.$path.") warning: unsupported key 'mctop/".$k."'. Press ENTER to continue.\n";
+   $term->readln();
+  }
+ }
+ $loadedcfg[] = $path;
+}
+$term->enable_color = (bool) $enable_color;
+$loadedcfg = sizeof($loadedcfg)?implode(',',$loadedcfg):'N/A';
+$fields = array(
+ 'server' => "SERVER",
+ 'usage' => 'USAGE',
+ 'capacity' => 'CAPACITY',
+ 'hit' => 'HIT %',
+ 'conn' => 'CONN',
+ 'uptime' => 'UPTIME',
+ 'evict' => 'EVICT',
+ 'rps' => 'R/s',
+ 'wps' => 'W/s',
+);
+$memcache = new Memcached_EmbeddedClient;
+$format = explode(',',$format);
+foreach ($servers as $k => $v) {$servers[$k] = explode(':',$v);}
+$memcache->addServers($servers);
+$ops = array();
+for (;;)
+{
+ $srvtable = array();
+ $row = array();
+ foreach ($format as &$f) {$row[$f] = $fields[$f];}
+ $row['_color'] = '37';
+ $row['_bold'] = TRUE;
+ $srvtable[] = $row;
+ $info = $memcache->getStats();
+ $sum = array();
+ $c = 0;
+ foreach ($servers as $addr)
+ {
+  $srv = $addr[0].':'.$addr[1];
+  if (isset($info[$srv])) {$stat = $info[$srv];}
+  else {$stat = FALSE;}
+  if (!isset($ops[$srv])) {$ops[$srv] = array();}
+  $row = array();
+  $i = 0;
+  foreach ($format as &$f)
+  {
+   if (!isset($sum[$f])) {$sum[$f] = 0;}
+   if ($f == 'server')
+   {
+    $row[$f] = $srv;
+    if (!$stat)
+    {
+     $row['_'] = $srv.' is DOWN.';
+     $row['_color'] = '1;31';
+     break;
+    }
+    ++$c;
+   }
+   elseif ($f == 'conn')
+   {
+    $row[$f] = $stat['curr_connections'];
+    $sum[$f] += $row[$f];
+   }
+   elseif ($f == 'uptime')
+   {
+    $row[$f] = date_period_text(time()-$stat['uptime'],time());
+    $sum[$f] += $stat['uptime'];
+   }
+   elseif ($f == 'hit')
+   {
+    if ($stat['cmd_get'] == 0) {$p = 0;}
+    else {$p = round($stat['get_hits']/$stat['cmd_get']*100,2);}
+    $row[$f] = $p.'%';
+    $sum[$f] += $p;
+   }
+   elseif ($f == 'avgrps')
+   {
+    $row[$f] = round($stat['cmd_get']/$stat['uptime'],2);
+    $sum[$f] += $row[$f];
+   }
+   elseif ($f == 'avgwps')
+   {
+    $row[$f] = round($stat['cmd_set']/$stat['uptime'],2);
+    $sum[$f] += $row[$f];
+   }
+   elseif ($f == 'rps')
+   {
+    $mt = microtime(TRUE);
+    if (isset($ops[$srv]['get_mtime']))
+    {
+     $dt = $mt-$ops[$srv]['get_mtime'];
+     $dc = $stat['cmd_get']-$ops[$srv]['cmd_get'];
+     if ($dc < 0) {$dc = 0;}
+     $row[$f] = round($dc/$dt,2);
+     $sum[$f] += $row[$f];
+    }
+    else {$row[$f] = '~';}
+    $ops[$srv]['get_mtime'] = $mt;
+    $ops[$srv]['cmd_get'] = $stat['cmd_get'];
+   }
+   elseif ($f == 'wps')
+   {
+    $mt = microtime(TRUE);
+    if (isset($ops[$srv]['set_mtime']))
+    {
+     $dt = $mt-$ops[$srv]['set_mtime'];
+     $dc = $stat['cmd_set']-$ops[$srv]['cmd_set'];
+     if ($dc < 0) {$dc = 0;}
+     $row[$f] = round($dc/$dt,2);
+     $sum[$f] += $row[$f];
+    }
+    else {$row[$f] = '~';}
+    $ops[$srv]['set_mtime'] = $mt;
+    $ops[$srv]['cmd_set'] = $stat['cmd_set'];
+   }
+   elseif ($f == 'evict')
+   {
+    $row[$f] = $stat['evictions'];
+    $sum[$f] += $row[$f];
+   }
+   elseif ($f == 'usage')
+   {
+    $row[$f] = round($stat['bytes']/$stat['limit_maxbytes']*100,2).'%';
+    $sum[$f] += round($stat['bytes']/$stat['limit_maxbytes']*100,2);
+   }
+   elseif ($f == 'capacity')
+   {
+    $row[$f] = view_size($stat['limit_maxbytes']);
+    $sum[$f] += $stat['limit_maxbytes'];
+   }
+   else {$row[$f] = 'N/S';}
+  }
+  $srvtable[] = $row;
+ }
+ $srvtable[] = array('_' => '');
+ $average = array();
+ $total = array();
+ $j = $c;
+ while (!$row || isset($row['_'])) {$row = $srvtable[--$j];}
+ foreach ($row as $k => $v)
+ {
+  if (substr($k,0,1) == '_') {continue;}
+  $avg = round($sum[$k]/$c,2);
+  $total[$k] = '';
+  if ($k == 'capacity')
+  {
+   $avg = view_size($avg);
+   $total[$k] = view_size($sum[$k]);
+  }
+  elseif ($k == 'hit')
+  {
+   $avg = $avg.'%';
+  }
+  elseif ($k == 'usage')
+  {
+   $avg = $avg.'%';
+  }
+  elseif ($k == 'uptime')
+  {
+   $avg = date_period_text(time()-(int) $avg,time());
+   $total[$k] = date_period_text(time()-(int) $sum[$k],time());
+  }
+  elseif (($k == 'evict') || ($k == 'rps') || ($k == 'wps')|| ($k == 'conn'))
+  {
+   $total[$k] = $sum[$k];
+  }
+  elseif ($k == 'server')
+  {
+   $avg = 'Average:';
+   $total[$k] = 'Total:';
+  }
+  $average[$k] = $avg;
+ }
+ $srvtable[] = $total;
+ $srvtable[] = $average;
+ $term->clearScreen();
+ echo 'mctop v.'.$ver." (http://code.google.com/p/mctop)\n"
+ ."Refresh: ".$refresh." sec. Config-files: ".$loadedcfg.". Ctrl-C to quit.\n"
+ ."\n";
+ $term->drawTable($srvtable);
+ sleep($refresh);
+}
+class Memcached_EmbeddedClient
+{
+ public $servers = array();
+ public function addServers($servers)
+ {
+  $this->servers = array_merge($this->servers,$servers);
+ }
+ public $pool = array();
+ public function protoError($msg)
+ {
+ }
+ public function getConnection($host,$port)
+ {
+  $addr = $host.':'.$port;
+  if (isset($this->pool[$addr])) {return $this->pool[$addr];}
+  if ($socket = @fsockopen($host,$port,$errno,$errstr,1))
+  {
+   return $this->pool[$addr] = $socket;
+  }
+  else {return FALSE;}
+ }
+ public function getStats()
+ {
+  $bunch = array();
+  foreach ($this->servers as $k)
+  {
+   $addr = $k[0].':'.$k[1];
+   $conn = $this->getConnection($k[0],$k[1]);
+   if (!$conn) {$stat = FALSE;}
+   else
+   {
+    fwrite($conn,"stats\n");
+    $stat = array();
+    $buf = '';
+    while (($line = fgets($conn)) !== FALSE)
+    {
+     $buf .= $line;
+     if (substr($buf,-1) != "\n") {continue;}
+     if (substr($buf,-2,1) == "\r") {$buf = substr($buf,0,-2);}
+     else {$buf = substr($buf,0,-2);}
+     $e = explode("\x20",$buf,3);
+     if ($e[0] == 'END') {break;}
+     elseif ($e[0] == 'STAT') {$stat[$e[1]] = $e[2];}
+     else {$this->protoError('Unrecognized reply \''.$e[0].'\'.');}
+     $buf = '';
+    }
+   }
+   $bunch[$addr] = $stat;
+  }
+  return $bunch;
+ }
+}
+class Terminal
+{
+ public $enable_color;
+ public function readln()
+ {
+  return fgets(STDIN);
+ }
+ public function clearScreen() {echo "\x0c";}
+ public function setStyle($c)
+ {
+  if ($this->enable_color) {echo "\033[".$c.'m';}
+ }
+ public function resetStyle()
+ {
+  if ($this->enable_color) {echo "\033[0m";}
+ }
+ public function drawTable($rows)
+ {
+  $pad = array();
+  foreach ($rows as $row)
+  {
+   foreach ($row as $k => $v)
+   {
+    if (substr($k,0,1) == '_') {continue;}
+    if (!isset($pad[$k]) || (strlen($v) > $pad[$k])) {$pad[$k] = strlen($v);}
+   }
+  }
+  foreach ($rows as $row)
+  {
+   if (isset($row['_color'])) {$this->setStyle($row['_color']);}
+   if (isset($row['_bold'])) {$this->setStyle('1');}
+   if (isset($row['_'])) {echo $row['_'];}
+   else
+   {
+    $i = 0;
+    foreach ($row as $k => $v)
+    {
+     if (substr($k,0,1) == '_') {continue;}
+     if ($i > 0) {echo "\t";}
+     echo str_pad($v,$pad[$k]);
+     ++$i;
+    }
+   }
+   $this->resetStyle();
+   echo "\n";
+  }
+ }
+}
+function date_period($st,$fin)
+{
+ if ((is_int($st)) || (ctype_digit($st))) {$st = date('d-m-Y-H-i-s',$st);}
+ $st = explode('-',$st);
+ if ((is_int($fin)) || (ctype_digit($fin))) {$fin = date('d-m-Y-H-i-s',$fin);}
+ $fin = explode('-',$fin);
+ if (($seconds = $fin[5] - $st[5]) < 0) {$fin[4]--; $seconds += 60;}
+ if (($minutes = $fin[4] - $st[4]) < 0) {$fin[3]--; $minutes += 60;}
+ if (($hours = $fin[3] - $st[3]) < 0) {$fin[0]--; $hours += 24;}
+ if (($days = $fin[0] - $st[0]) < 0) {$fin[1]--; $days += date('t', mktime(1, 0, 0, $fin[1], $fin[0], $fin[2]));}
+ if (($months = $fin[1] - $st[1]) < 0) {$fin[2]--; $months += 12;}
+ $years = $fin[2] - $st[2];
+ return array($seconds,$minutes,$hours,$days,$months,$years);
+}
+function date_period_text($date_start,$date_finish)
+{
+ $result = date_period($date_start,$date_finish);
+ $str  = '';
+ if ($result[5] > 0) {$str .= $result[5].'y ';}
+ if ($result[4] > 0) {$str .= $result[4].'M ';}
+ if ($result[3] > 0) {$str .= $result[3].'d ';}
+ if ($result[2] > 0) {$str .= $result[2].'h ';}
+ if ($result[1] > 0) {$str .= $result[1].'m ';}
+ if ($result[0] > 0 or $str == '') {$str .= $result[0].'s';}
+ return trim($str);
+}
+function view_size($size)
+{
+ if (!is_numeric($size)) {return false;}
+ else
+ {
+  if ($size >= 1073741824) {$size = round($size/1073741824,2).' GB';}
+  elseif ($size >= 1048576) {$size = round($size/1048576,2) .' MB';}
+  elseif ($size >= 1024) {$size = round($size/1024*100,2) .' KB';}
+  else {$size = $size.' B';}
+  return $size;
+ }
+}
