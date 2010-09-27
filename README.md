@@ -1,0 +1,18 @@
+It provides some statistics of memcache cluster online.
+Very useful for monitoring and debugging purposes.
+
+Example:
+```
+mctop v.0.5 (http://code.google.com/p/mctop)
+Refresh: 2 sec. Config-files: ./mctop.conf. Ctrl-C to quit.
+
+SERVER                  CAPACITY        USAGE   HIT %   CONN    UPTIME                  R/s     W/s     EVICT
+127.0.0.1:11211         4 GB            0%      86.41%  10      13h 52m 12s             0.06    0.02    0
+b2.d0.yatv.ru:11211     4 GB            0%      86.41%  11      13h 52m 12s             0.06    0.02    0
+m0.d0.yatv.ru:11211     512 MB          0.44%   57.46%  3       2M 19d 10h 39m 16s      0.57    0.03    0
+yatv.ru:11211           512 MB          27.21%  80.87%  3       2M 19d 9h 48m 5s        42.44   7.13    0
+
+Total:                  9 GB                            27      5M 7d 11m 45s           43.13   7.2     0
+Average:                2.25 GB         6.91%   77.79%  6.75    1M 8d 12h 2m 56s        10.78   1.8     0
+
+```
