@@ -3,7 +3,6 @@ Very useful for monitoring and debugging purposes.
 
 Example:
 
-```html
 mctop v.0.5 (http://code.google.com/p/mctop)
 Refresh: 2 sec. Config-files: ./mctop.conf. Ctrl-C to quit.
 
@@ -15,5 +14,3 @@ yatv.ru:11211           512 MB          27.21%  80.87%  3       2M 19d 9h 48m 5s
 
 Total:                  9 GB                            27      5M 7d 11m 45s           43.13   7.2     0
 Average:                2.25 GB         6.91%   77.79%  6.75    1M 8d 12h 2m 56s        10.78   1.8     0
-
-```
