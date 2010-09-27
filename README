@@ -3,7 +3,7 @@ Very useful for monitoring and debugging purposes.
 
 Example:
 
-mctop v.0.5 (http://code.google.com/p/mctop)
+mctop v.0.5 (http://github.com/kakserpom/mctop)
 Refresh: 2 sec. Config-files: ./mctop.conf. Ctrl-C to quit.
 
 SERVER                  CAPACITY        USAGE   HIT %   CONN    UPTIME                  R/s     W/s     EVICT

@@ -1,6 +1,6 @@
 #!/usr/bin/php -q
 <?php
-/* mctop v.0.5.3 (http://code.google.com/p/mctop)
+/* mctop v.0.5.3 (http://github.com/kakserpom/mctop)
    Written by kak.serpom.po.yaitsam@gmail.com
    Project is under LGPL (Lesser GNU Public License).
 */
