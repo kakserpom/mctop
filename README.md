@@ -2,7 +2,8 @@ It provides some statistics of memcache cluster online.
 Very useful for monitoring and debugging purposes.
 
 Example:
-```
+
+```html
 mctop v.0.5 (http://code.google.com/p/mctop)
 Refresh: 2 sec. Config-files: ./mctop.conf. Ctrl-C to quit.
 
