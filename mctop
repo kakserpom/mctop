@@ -167,7 +167,10 @@ for (;;)
  $average = array();
  $total = array();
  $j = $c;
- while (!$row || isset($row['_'])) {$row = $srvtable[--$j];}
+ while (!$row || isset($row['_'])) {
+		$row = $srvtable[--$j];
+		if ($j <= 0) {break;}
+ }
  foreach ($row as $k => $v)
  {
   if (substr($k,0,1) == '_') {continue;}
